@@ -1,0 +1,41 @@
+* needed
+** DONE starred
+** DONE streaming
+** DONE play queue
+** DONE fix the configure script
+*** DONE fail if libraries are not found
+*** DONE pkg-config detection for libspotify
+** DONE seek
+** DONE messages only in debug mode
+** DONE getopt
+** DONE serialize to file the auth token
+** show the future tracks
+** DONE now playing screen
+** help screen
+** logout
+** relogin
+** DONE fix seeking
+** inbox
+** handle terminal resizing
+** cancellable input box for search
+** make the login more robust (timeout)
+** DONE show starred tracks in any search result
+** DONE star/unstar tracks in any search result
+** DONE star/unstar playing track
+** shuffle
+** repeat
+* desired
+** add to playlist
+** add/remove playlist
+** add to queue
+** DONE cover art
+** scrobbling
+** add to queue from any search result
+** volume support
+** tag starred tracks in any list
+** support scripting
+** radio
+** history
+** state machine for the keyboard handler
+** non blocking menu
+** now playing in the background

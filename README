@@ -1,0 +1,27 @@
+Shpotify is a ncurses client for Spotify.
+
+Currently it runs only on GNU/Linux.
+
+By using this program you accept the Spotify EULA, that you can find
+here: 
+
+http://www.spotify.com/uk/legal/end-user-agreement/
+
+------------------------ BUILD INSTRUCTION -----------------------------
+
+You need libspotify to build the program, you can download it here:
+
+https://developer.spotify.com/technologies/libspotify/#download
+
+Be sure that pkg-config can find it, you may need to modify the prefix
+value in the /lib/pkgconfig/libspotify.pc in order to achieve it.
+
+Also, you need these libraries installed, otherwise the configure
+script will fail:
+
+- libasound
+- libjpeg
+- libncurses
+
+The code stinks!  It is just a few days hack and wasn't supposed to be
+used or made public.  Feel free to improve it.

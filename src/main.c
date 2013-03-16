@@ -341,7 +341,7 @@ logging_in ()
 }
 
 void
-search_complete (sp_search * result, void *userdata)
+search_complete (sp_search *result, void *userdata)
 {
 }
 

@@ -55,7 +55,7 @@ queue_make (sp_session * session, size_t len)
 }
 
 int
-queue_add (queue_t * queue, sp_track * track)
+queue_add (queue_t *queue, sp_track * track)
 {
   if (queue->used == queue->length)
     return 0;
@@ -67,7 +67,7 @@ queue_add (queue_t * queue, sp_track * track)
 }
 
 static void
-queue_free_list (queue_t * queue)
+queue_free_list (queue_t *queue)
 {
   sp_track *track;
   while ((track = queue_get_next (queue)))
@@ -75,14 +75,14 @@ queue_free_list (queue_t * queue)
 }
 
 void
-queue_free (queue_t * queue)
+queue_free (queue_t *queue)
 {
   queue_free_list (queue);
   free (queue);
 }
 
 sp_track *
-queue_get_next (queue_t * queue)
+queue_get_next (queue_t *queue)
 {
   sp_track *track = queue_peek_next (queue, 0);
   if (track == NULL)
@@ -94,7 +94,7 @@ queue_get_next (queue_t * queue)
 }
 
 sp_track *
-queue_peek_next (queue_t * queue, size_t start)
+queue_peek_next (queue_t *queue, size_t start)
 {
   if (queue->used <= start)
     return NULL;
@@ -103,7 +103,7 @@ queue_peek_next (queue_t * queue, size_t start)
 }
 
 void
-queue_play_with_future (queue_t * queue, struct search_result *sr)
+queue_play_with_future (queue_t *queue, struct search_result *sr)
 {
   queue_free_list (queue);
   while (sr->type)

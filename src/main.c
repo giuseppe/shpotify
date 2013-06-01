@@ -626,10 +626,13 @@ show_playing ()
           if (g_sample_rate)
             g_seek_off = g_elapsed_frames / g_sample_rate * 1000;
 	  assert (g_seek_off >= 0);
-          sp_session_player_play (g_session, false);
+
+	  g_paused = false;
+          sound_pause (g_paused);
+
+	  sp_session_player_play (g_session, false);
 	  sp_session_player_seek (g_session, g_seek_off);
 	  sp_session_player_play (g_session, true);
-	  sp_session_player_play (g_session, !g_paused);
 	  break;
 
 	case KEY_RIGHT:
@@ -637,9 +640,13 @@ show_playing ()
           if (g_sample_rate)
             g_seek_off = tmp / g_sample_rate * 1000;
 	  assert (g_seek_off >= 0);
-          sp_session_player_play (g_session, false);
+
+	  g_paused = false;
+          sound_pause (g_paused);
+
+	  sp_session_player_play (g_session, false);
 	  sp_session_player_seek (g_session, g_seek_off);
-	  sp_session_player_play (g_session, !g_paused);
+	  sp_session_player_play (g_session, true);
 	  break;
 
 	case KEY_DOWN:
@@ -654,6 +661,8 @@ show_playing ()
 
 	case ' ':
 	  g_paused = !g_paused;
+          sound_pause (g_paused);
+	  sp_session_player_play (g_session, !g_paused);
 	  break;
 
           /* Star/Unstar.  */
@@ -666,41 +675,25 @@ show_playing ()
 	}
       nodelay (g_mainwin, false);
 
-      if (g_sample_rate)
-	{
-          sp_track *next_track;
-          static sp_track *last_prefetched = NULL;
-	  off = g_elapsed_frames / g_sample_rate * 1000;
-
-          next_track = queue_peek_next (g_play_queue, 0);
-	  if (next_track != last_prefetched
-              && off >= sp_track_duration (g_current_track) - 60000)
+      if (g_end_of_track || skip_track)
+        {
+          sp_session_player_play (g_session, false);
+          do
             {
-              sp_track *next_track = queue_peek_next (g_play_queue, 0);
-              if (next_track)
-                {
-                  last_prefetched = next_track;
-                  sp_session_player_prefetch (g_session, next_track);
-                }
+              sp_track_release (g_current_track);
+              g_current_track = queue_get_next (g_play_queue);
+              if (g_current_track == NULL)
+                return STATUS_HOME;
+
+              err = sp_session_player_load (g_session, g_current_track);
             }
+          while (err == SP_ERROR_TRACK_NOT_PLAYABLE);
+          g_end_of_track = 0;
+          sp_session_player_play (g_session, true);
+          reset_screen ();
+          g_elapsed_frames = 0;
+        }
 
-	  if (skip_track || off >= sp_track_duration (g_current_track))
-	    {
-              do
-                {
-                  sp_track_release (g_current_track);
-                  g_current_track = queue_get_next (g_play_queue);
-                  if (g_current_track == NULL)
-                    return STATUS_HOME;
-
-                  err = sp_session_player_load (g_session, g_current_track);
-                }
-              while (err == SP_ERROR_TRACK_NOT_PLAYABLE);
-	      sp_session_player_play (g_session, true);
-	      reset_screen ();
-	      g_elapsed_frames = 0;
-	    }
-	}
       usleep (min (to, 250) * 1000);
     }
 
@@ -876,7 +869,7 @@ add_track_to_playlist (sp_track *track)
     return;
 
   tracks[0] = track;
-  sp_playlist_add_tracks (pl, tracks, 1, sp_playlist_num_tracks(pl), g_session);
+  sp_playlist_add_tracks (pl, tracks, 1, sp_playlist_num_tracks (pl), g_session);
 }
 
 static int
@@ -1126,7 +1119,6 @@ search_results_display (struct search_result *results, WINDOW *list_wnd, int off
     }
 
  exit:
-
   selected_item = item_index (current_item (menu));
   if (selected_item < 0)
     selected_item = 0;
@@ -1452,7 +1444,7 @@ main_loop ()
 }
 
 static void
-logged_in (sp_session * session, sp_error error)
+logged_in (sp_session *session, sp_error error)
 {
   if (error == SP_ERROR_OK)
     transition_to (STATUS_HOME);
@@ -1461,27 +1453,27 @@ logged_in (sp_session * session, sp_error error)
 }
 
 static void
-message_to_user (sp_session * session, const char *message)
+message_to_user (sp_session *session, const char *message)
 {
   msg_to_user (message);
 }
 
 static void
-log_message (sp_session * session, const char *data)
+log_message (sp_session *session, const char *data)
 {
   if (g_debug)
     msg_to_user (data);
 }
 
 static void
-metadata_updated (sp_session * session)
+metadata_updated (sp_session *session)
 {
   g_force_refresh = 1;
 }
 
 static int
-music_delivery (sp_session * session, const sp_audioformat * format,
-		const void *frames, int num_frames)
+music_delivery (sp_session *session, const sp_audioformat * format,
+                const void *frames, int num_frames)
 {
   if (num_frames == 0)
     {
@@ -1492,22 +1484,19 @@ music_delivery (sp_session * session, const sp_audioformat * format,
       return 0;
     }
 
-  if (g_paused)
-    return 0;
-
   g_elapsed_frames += num_frames;
   g_sample_rate = format->sample_rate;
   return sound_write (frames, num_frames);
 }
 
 static void
-end_of_track (sp_session * session)
+end_of_track (sp_session *session)
 {
   g_end_of_track = 1;
 }
 
 static void
-play_token_lost (sp_session * session)
+play_token_lost (sp_session *session)
 {
   msg_to_user ("Play token lost");
   sound_flush ();
@@ -1515,25 +1504,23 @@ play_token_lost (sp_session * session)
 
 
 static void
-start_playback (sp_session * session)
+start_playback (sp_session *session)
 {
-
 }
 
 static void
-stop_playback (sp_session * session)
+stop_playback (sp_session *session)
 {
-
 }
 
 static void
-get_audio_buffer_stats (sp_session * session, sp_audio_buffer_stats * stats)
+get_audio_buffer_stats (sp_session *session, sp_audio_buffer_stats *stats)
 {
-
+  stats->samples = sound_get_buffer ();
 }
 
 static void
-credentials_blob_updated (sp_session * session, const char *blob)
+credentials_blob_updated (sp_session *session, const char *blob)
 {
   const char *username;
   FILE *out = fopen ("blob.dat", "w+");

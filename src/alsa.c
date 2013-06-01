@@ -36,6 +36,8 @@ static unsigned int val;
 static int dir;
 static snd_pcm_uframes_t frames;
 
+static int g_paused;
+
 #define CHANNELS 2
 #define RATE     44100
 #define FRAMES   32
@@ -51,6 +53,8 @@ sound_init ()
       fprintf (stderr, "unable to open pcm device: %s\n", snd_strerror (rc));
       return rc;
     }
+
+  g_paused = 0;
 
   snd_pcm_hw_params_alloca (&params);
 
@@ -88,6 +92,19 @@ sound_flush ()
   return 0;
 }
 
+unsigned int
+sound_get_buffer ()
+{
+  int ret;
+  snd_pcm_uframes_t buffer_size, period_size;
+
+  ret = snd_pcm_get_params (handle, &buffer_size, &period_size);
+  if (ret < 0)
+    return 0;
+
+  return buffer_size - snd_pcm_avail_update (handle);
+}
+
 int
 sound_write (const char *buffer, int frames)
 {
@@ -95,6 +112,9 @@ sound_write (const char *buffer, int frames)
 
   if (frames == 0)
     return sound_flush ();
+
+  if (g_paused)
+    return 0;
 
  restart:
   rc = snd_pcm_writei (handle, buffer, frames);
@@ -112,6 +132,14 @@ sound_clean ()
 {
   snd_pcm_drop (handle);
   snd_pcm_close (handle);
+
+  return 0;
+}
+
+int
+sound_pause (int value)
+{
+  g_paused = value;
 
   return 0;
 }

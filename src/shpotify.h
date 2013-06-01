@@ -93,6 +93,8 @@ int sound_init ();
 int sound_write (const char *buffer, int frames);
 int sound_flush ();
 int sound_clean ();
+int sound_pause (int);
+unsigned int sound_get_buffer ();
 
 /* img.c.  */
 void img_initialize_palette ();

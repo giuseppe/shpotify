@@ -30,6 +30,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <unistd.h>
 #include <form.h>
 #include <curses.h>
+#include <signal.h>
 #include <string.h>
 #include <locale.h>
 #include <menu.h>
@@ -43,6 +44,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 static WINDOW *content_wnd;
 static WINDOW *g_mainwin;
 static int g_status, g_debug = 0;
+static bool force_redraw = false;
 int g_h, g_w;
 struct search_result *g_search_results;
 struct search_result g_result_to_browse;
@@ -558,7 +560,7 @@ show_playing ()
       int to, c, skip_track = 0;
       sp_track *to_star[1];
 
-      if (last_showed_track != g_current_track)
+      if (last_showed_track != g_current_track || force_redraw)
 	{
 	  sp_album *album = sp_track_album (g_current_track);
 	  const byte *data = sp_album_cover (album, SP_IMAGE_SIZE_NORMAL);
@@ -574,6 +576,7 @@ show_playing ()
                   img_show_art (memstream);
                   fclose (memstream);
                   last_showed_track = g_current_track;
+                  force_redraw = false;
                 }
             }
 	}
@@ -1585,6 +1588,53 @@ init_session ()
   g_play_queue = queue_make (g_session, 128);
 }
 
+static int
+reset_graphics (bool resize)
+{
+  if (resize)
+    {
+      endwin();
+      refresh ();
+      clear ();
+    }
+
+  cbreak ();
+  noecho ();
+  keypad (stdscr, TRUE);
+
+  start_color ();
+  if (has_colors () && COLOR_PAIRS >= 8)
+    {
+      int i;
+      init_pair (COLOR_DEFAULT, COLOR_GREEN, COLOR_BLACK);
+      init_pair (COLOR_MESSAGE, COLOR_BLACK, COLOR_YELLOW);
+      init_pair (COLOR_INPUT, COLOR_GREEN, COLOR_RED);
+      init_pair (COLOR_SEEK_BAR_ELAPSED, COLOR_BLACK, COLOR_MAGENTA);
+      init_pair (COLOR_SEEK_BAR_FUTURE, COLOR_BLACK, COLOR_YELLOW);
+      init_pair (COLOR_STAR, COLOR_YELLOW, COLOR_BLACK);
+
+      for (i = 0; i < COLORS; i++)
+	init_pair (i + COLOR_MAX, i, i);
+    }
+
+  getmaxyx (g_mainwin, g_h, g_w);
+
+  img_initialize_palette ();
+  color_set (1, NULL);
+
+  content_wnd = subwin (g_mainwin, g_w - 2, g_h - 2, 1, 1);
+
+  curs_set (0);
+
+  force_redraw = true;
+}
+
+static void
+on_sigwinch ()
+{
+  reset_graphics (true);
+}
+
 int
 main (int argc, char *const *argv)
 {
@@ -1613,36 +1663,11 @@ main (int argc, char *const *argv)
     }
 
   init_wd ();
-
-  cbreak ();
-  noecho ();
-  keypad (stdscr, TRUE);
-
   atexit (atexit_cleanup);
-  start_color ();
-  if (has_colors () && COLOR_PAIRS >= 8)
-    {
-      int i;
-      init_pair (COLOR_DEFAULT, COLOR_GREEN, COLOR_BLACK);
-      init_pair (COLOR_MESSAGE, COLOR_BLACK, COLOR_YELLOW);
-      init_pair (COLOR_INPUT, COLOR_GREEN, COLOR_RED);
-      init_pair (COLOR_SEEK_BAR_ELAPSED, COLOR_BLACK, COLOR_MAGENTA);
-      init_pair (COLOR_SEEK_BAR_FUTURE, COLOR_BLACK, COLOR_YELLOW);
-      init_pair (COLOR_STAR, COLOR_YELLOW, COLOR_BLACK);
-
-      for (i = 0; i < COLORS; i++)
-	init_pair (i + COLOR_MAX, i, i);
-    }
-
-  getmaxyx (g_mainwin, g_h, g_w);
   g_status = STATUS_NOT_LOGGED;
 
-  img_initialize_palette ();
-  color_set (1, NULL);
-
-  content_wnd = subwin (g_mainwin, g_w - 2, g_h - 2, 1, 1);
-
-  curs_set (0);
+  reset_graphics (false);
+  signal(SIGWINCH, on_sigwinch);
 
   init_session ();
 

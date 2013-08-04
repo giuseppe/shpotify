@@ -35,8 +35,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <locale.h>
 #include <menu.h>
 
-int g_lb[3];
-int g_ub[3];
+#include <assert.h>
+
+#define MAX_COL_COMPONENTS 4
 
 static int
 abs_diff (int a, int b)
@@ -58,52 +59,18 @@ distance (int *col, int components, int c)
   if (components == 1)
     return abs_diff ((ri + gi + bi) / 3, col[0]);
   else
-    return abs_diff (col[0], ri) * abs_diff (col[1], gi) * abs_diff (col[2],
+    return abs_diff (col[0], ri) + abs_diff (col[1], gi) + abs_diff (col[2],
 								     bi);
 }
 
-static void
-get_colour_avg (unsigned char *img, int *col, int i, int j, int orig_w,
-		int orig_h, int img_w, int img_h, int components)
-{
-  int ii, jj, z, len = 0;
-
-  i = i * orig_w / img_w;
-  j = j * orig_h / img_h;
-
-  memset (col, 0, components * sizeof (int));
-  for (ii = i; ii < i + orig_w / img_w; ii++)
-    for (jj = j; jj < j + orig_h / img_h; jj++)
-      {
-	for (z = 0; z < components; z++)
-	  {
-	    int f;
-#define PALETTE_CORRECTION(x) ((x) * (g_ub[z] - g_lb[z]) / 255 + g_lb[z])
-	    f = img[(ii + jj * orig_w) * components + z];
-
-	    col[z] += PALETTE_CORRECTION (f);
-	  }
-	len++;
-      }
-
-  for (z = 0; z < 3; z++)
-    col[z] /= len;
-}
-
 static int
-pick_colour (unsigned char *img, int i, int j, int orig_w, int orig_h,
-	     int img_w, int img_h, int components)
+pick_best_distance_color (int components, int *col)
 {
-  int c;
-  int best = 0;
-  size_t off = (i + j * orig_w) * 3;
-  unsigned int best_distance = (unsigned int) -1;
+  int best = 0, c;
+  unsigned int best_distance = 256 * components + 1;
+
   for (c = 0; c < COLORS; c++)
     {
-#define MAX_COL_COMPONENTS 4
-      int col[MAX_COL_COMPONENTS];
-      get_colour_avg (img, col, i, j, orig_w, orig_h, img_w, img_h,
-		      components);
       unsigned int d = distance (col, components, c);
       if (d < best_distance)
 	{
@@ -118,45 +85,10 @@ pick_colour (unsigned char *img, int i, int j, int orig_w, int orig_h,
 void
 img_initialize_palette ()
 {
-  short foreground, background, ri, gi, bi, i;
-  int avg[3];
-  int var[3];
-  memset (avg, 0, sizeof avg);
-  memset (var, 0, sizeof var);
-  for (i = 0; i < COLORS; i++)
-    {
-      pair_content (i + COLOR_MAX, &foreground, &background);
-      color_content (foreground, &ri, &gi, &bi);
-#define SCALE(x) ((x) * 255 / 1000)
-      avg[0] += SCALE (ri);
-      avg[1] += SCALE (gi);
-      avg[2] += SCALE (bi);
-#undef SCALE
-    }
-
-  for (i = 0; i < 3; i++)
-    avg[i] /= COLORS;
-
-  for (i = 0; i < COLORS; i++)
-    {
-      pair_content (i + COLOR_MAX, &foreground, &background);
-      color_content (foreground, &ri, &gi, &bi);
-
-      var[0] += abs (avg[0] - ri * 255 / 1000);
-      var[1] += abs (avg[1] - gi * 255 / 1000);
-      var[2] += abs (avg[2] - bi * 255 / 1000);
-    }
-
-  for (i = 0; i < 3; i++)
-    {
-      var[i] /= COLORS;
-      g_lb[i] = max (avg[i] - var[i] * 2, 0);
-      g_ub[i] = min (avg[i] + var[i] * 2, 255);
-    }
 }
 
 static unsigned char *
-read_jpeg_file (FILE * infile, int *w, int *h, int *components)
+read_jpeg_file (FILE *infile, int *w, int *h, int *components)
 {
   size_t size;
   unsigned char *raw_image;
@@ -195,25 +127,132 @@ read_jpeg_file (FILE * infile, int *w, int *h, int *components)
   return raw_image;
 }
 
-int
-img_show_art (FILE * infile)
+#define CLAMP(x) (min (max (x, 0), 255))
+#define INDEX_EXT(i, j, w, h) (((j * w) + i) * components + c)
+#define INDEX(i, j) INDEX_EXT(i, j, w, h)
+
+static void
+img_dithering (unsigned char *img, int w, int h, int components)
 {
-  int i, j, c, s_h, s_w;
-  int w, h, components;
-  unsigned char *img;
+  int i, j, c;
+
+  for (j = 0; j < h - 1; j++)
+    for (i = 1; i < w - 1; i++)
+      {
+        int old_components[MAX_COL_COMPONENTS];
+        int new_components[MAX_COL_COMPONENTS];
+        short foreground, background, ro, go, bo;
+        int best_palette;
+
+        c = 0;
+
+        for (c = 0; c < components; c++)
+          old_components[c] = img[INDEX(i, j)];
+
+        best_palette = pick_best_distance_color (components, old_components);
+        pair_content (best_palette + COLOR_MAX, &foreground, &background);
+        color_content (foreground, &ro, &go, &bo);
+
+        new_components[0] = ro * 255 / 1000;
+        new_components[1] = go * 255 / 1000;
+        new_components[2] = bo * 255 / 1000;
+        for (c = 0; c < components; c++)
+          {
+            int quant_error = old_components[c] - new_components[c];
+#define TRANSFORM(ii, jj, n) do {                                       \
+              int index = INDEX((i + ii), (j + jj));                    \
+              int delta = (quant_error * n) / 16;                       \
+              img[index] = CLAMP (img[index] + delta);                  \
+            } while (0)
+
+            TRANSFORM (1, 0, 7);
+            TRANSFORM (-1, 1, 3);
+            TRANSFORM (0, 1, 5);
+            TRANSFORM (1, 1, 1);
+
+            img[INDEX(i, j)] = new_components[c];
+          }
+      }
+}
+
+static unsigned char
+img_blur (const unsigned char *img, int w, int h, int components, int si, int sj, int s_w, int s_h, int c, int blur)
+{
+  int i, j;
+  unsigned int ret = 0;
+  int nw = w / s_w + blur;
+  int nh = h / s_h + blur;
+  int cells = 0;
+
+  for (i = si * w / s_w - nw; i <= si * w / s_w + nw; i++)
+    for (j = sj * h / s_h - nh; j <= sj * h / s_h + nh; j++)
+      {
+        if (i < 0 || j < 0 || i >= w || j >= h)
+          continue;
+
+        cells++;
+        ret += img[INDEX(i, j)];
+      }
+
+  return cells ? CLAMP (ret / cells) : 0;
+}
+
+static void
+img_scaling (const unsigned char *img, unsigned char *scaled_img, int w, int h, int components, int s_w, int s_h)
+{
+  int i, j, c;
+  for (i = 0; i < s_w; i++)
+    for (j = 0; j < s_h; j++)
+      for (c = 0; c < components; c++)
+        {
+          int ind = INDEX_EXT (i, j, s_w, s_h);
+          scaled_img[ind] = img_blur (img, w, h, components, i, j, s_w, s_h, c, 1);
+        }
+}
+#undef INDEX
+#undef INDEX_EXT
+#undef CLAMP
+
+int
+img_show_art (FILE *infile)
+{
+  int i, j, s_h, s_w, c;
+  int w, h, components, ret = 0;
+  unsigned char *img, *scaled_img;
 
   img = read_jpeg_file (infile, &w, &h, &components);
+  if (img == NULL)
+    return -1;
+
+  assert (components <= MAX_COMPONENTS);
 
   s_w = min (g_w, w) - 2;
   s_h = min (g_h, h) - 2;
 
+  scaled_img = malloc (s_h * s_w * components);
+  if (scaled_img == NULL)
+    {
+      ret = -1;
+      goto exit_img;
+    }
+
+  img_scaling (img, scaled_img, w, h, components, s_w, s_h);
+  img_dithering (scaled_img, s_w, s_h, components);
   for (i = 0; i < s_w; i++)
     for (j = 0; j < s_h; j++)
       {
 	int offset = (g_w - s_w) / 2;
-	int col = pick_colour (img, i, j, w, h, s_w, s_h,
-			       components);
-	color_set (col + COLOR_MAX, NULL);
+        int ind = ((j * s_w) + i) * components;
+        int palette_col, col[MAX_COMPONENTS];
+        for (c = 0; c < components; c++)
+          col[c] = scaled_img[ind + c];
+
+	palette_col = pick_best_distance_color (components, col);
+        color_set (palette_col + COLOR_MAX, NULL);
 	mvprintw (j + 1, i + offset, " ");
       }
+  free(scaled_img);
+exit_img:
+  free (img);
+  return ret;
 }

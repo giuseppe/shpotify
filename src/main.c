@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2012, 2013, Giuseppe Scrivano <giuseppe@spotify.com>
+  Copyright (c) 2012, 2013, Giuseppe Scrivano <gscrivano@gnu.org>
   All rights reserved.
 
 Redistribution and use in source and binary forms, with or without

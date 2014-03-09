@@ -25,3 +25,13 @@ script will fail:
 
 The code stinks!  It is just a few days hack and wasn't supposed to be
 used or made public.  Feel free to improve it.
+
+Keys:
+
+* LEFT: seek backward by 10 seconds
+* RIGHT: seek forward by 10 seconds
+* DOWN: next song
+* ESCAPE: home screen
+* SPACE: pause/unpause
+* s: star the current song
+* u: unstar the current song

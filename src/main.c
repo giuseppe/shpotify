@@ -1,5 +1,5 @@
 /*
-  Copyright (c) 2012, 2013, Giuseppe Scrivano <gscrivano@gnu.org>
+  Copyright (c) 2012, 2013, 2014 Giuseppe Scrivano <gscrivano@gnu.org>
   All rights reserved.
 
 Redistribution and use in source and binary forms, with or without
@@ -673,10 +673,6 @@ show_playing ()
         case 's':
           to_star[0] = g_current_track;
           sp_track_set_starred (g_session, to_star, 1, c == 's');
-          break;
-
-        case KEY_NPAGE:
-          skip_track = true;
           break;
 	}
       nodelay (g_mainwin, false);
